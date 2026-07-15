@@ -478,11 +478,15 @@ def fallback_cobalt_download(url, download_id):
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
+        "Origin": "https://cobalt.tools",
+        "Referer": "https://cobalt.tools/",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     payload = {
         "url": url,
-        "downloadMode": "audio"
+        "downloadMode": "audio",
+        "audioFormat": "mp3",
+        "isAudioOnly": True
     }
     
     for instance in instances:
@@ -527,6 +531,16 @@ def fallback_cobalt_download(url, download_id):
                     with downloads_lock:
                         if download_id in active_downloads:
                             active_downloads[download_id]['logs'].append(err_msg)
+        except urllib.error.HTTPError as he:
+            try:
+                err_body = he.read().decode('utf-8', errors='ignore')
+                err_msg = f"[WARNING] Resolver {instance} responded with HTTP {he.code}: {err_body}"
+            except Exception:
+                err_msg = f"[WARNING] Resolver {instance} responded with HTTP {he.code}"
+            print(err_msg)
+            with downloads_lock:
+                if download_id in active_downloads:
+                    active_downloads[download_id]['logs'].append(err_msg)
         except Exception as e:
             err_msg = f"[WARNING] Resolver {instance} encountered an error: {e}"
             print(err_msg)
