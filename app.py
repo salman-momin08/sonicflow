@@ -438,6 +438,54 @@ def api_debug():
 
 # --- BACKGROUND TASK RUNNER ---
 
+def fallback_cobalt_download(url, download_id):
+    instances = [
+        "https://api.cobalt.tools",
+        "https://co.wuk.sh"
+    ]
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    payload = {
+        "url": url,
+        "downloadMode": "audio"
+    }
+    
+    for instance in instances:
+        try:
+            print(f"Attempting self-healing fallback via Cobalt API at: {instance}")
+            req = urllib.request.Request(
+                instance, 
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=15) as res:
+                response_data = json.loads(res.read().decode('utf-8'))
+                stream_url = response_data.get('url')
+                if stream_url:
+                    print(f"Cobalt resolved stream URL: {stream_url}")
+                    output_filename = f"{download_id}.mp3"
+                    output_path = os.path.join(DOWNLOADS_DIR, output_filename)
+                    
+                    stream_req = urllib.request.Request(stream_url, headers={"User-Agent": headers["User-Agent"]})
+                    with urllib.request.urlopen(stream_req) as stream_res:
+                        with open(output_path, 'wb') as out_f:
+                            while True:
+                                chunk = stream_res.read(1024 * 64)
+                                if not chunk:
+                                    break
+                                out_f.write(chunk)
+                    print(f"Successfully downloaded audio via Cobalt to: {output_path}")
+                    return True
+        except Exception as e:
+            print(f"Cobalt instance {instance} failed: {e}")
+    return False
+
+
 def process_download_task(download_id, url, target_title, target_artist, target_album, bitrate):
     print(f"Starting background download {download_id} for URL: {url}")
     
@@ -492,6 +540,13 @@ def process_download_task(download_id, url, target_title, target_artist, target_
         }],
     })
     
+    # Initialize variables for fallback
+    title = target_title or "Unknown Track"
+    artist = target_artist or "Unknown Artist"
+    album = target_album or "Single Release"
+    thumbnail_url = None
+    final_filename = ""
+    
     try:
         # Extract metadata info first
         with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
@@ -513,7 +568,6 @@ def process_download_task(download_id, url, target_title, target_artist, target_
             ydl.download([url])
             
         # Locate the output file (we find the newly created MP3 starting with the download_id)
-        final_filename = ""
         for file in os.listdir(DOWNLOADS_DIR):
             if file.startswith(download_id) and file.endswith(".mp3"):
                 final_filename = file
@@ -522,7 +576,20 @@ def process_download_task(download_id, url, target_title, target_artist, target_
         if not final_filename:
             raise Exception("Could not find the extracted audio output file.")
             
-        final_filepath = os.path.join(DOWNLOADS_DIR, final_filename)
+    except Exception as yt_err:
+        print(f"Primary engine yt-dlp failed: {yt_err}. Attempting self-healing Cobalt API fallback...")
+        with downloads_lock:
+            active_downloads[download_id]['logs'].append(f"[WARNING] Primary download engine encountered a challenge: {yt_err}")
+            active_downloads[download_id]['logs'].append("> Activating backup extraction engine...")
+            
+        # Trigger the cobalt API self-healing fallback
+        success = fallback_cobalt_download(url, download_id)
+        if success:
+            final_filename = f"{download_id}.mp3"
+        else:
+            raise Exception(f"Extraction failed. Both primary engine and fallback engine returned errors. Primary error: {yt_err}")
+            
+    final_filepath = os.path.join(DOWNLOADS_DIR, final_filename)
         
         # Download thumbnail artwork
         art_data = None
