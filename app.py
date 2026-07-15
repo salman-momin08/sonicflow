@@ -15,6 +15,9 @@ import static_ffmpeg
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB
 
+# Import security, file sanitization, and fallback downloader utilities
+from utils import is_safe_url, sanitize_filename, fallback_cobalt_download
+
 app = Flask(__name__)
 
 # Initialize static-ffmpeg to add FFmpeg binaries to system PATH automatically
@@ -41,34 +44,6 @@ if os.path.exists(COOKIES_FILE_RENDER):
     print("Render secret cookies.txt detected.")
 else:
     COOKIES_FILE = COOKIES_FILE_LOCAL
-
-# Whitelist of allowed domains to prevent SSRF
-ALLOWED_DOMAINS = {
-    'youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be',
-    'soundcloud.com', 'www.soundcloud.com',
-    'jamendo.com', 'www.jamendo.com',
-    'archive.org', 'www.archive.org'
-}
-
-def is_safe_url(url):
-    try:
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in ('http', 'https'):
-            return False
-        host = parsed.netloc.lower()
-        if ':' in host:
-            host = host.split(':')[0]
-        return any(host == domain or host.endswith('.' + domain) for domain in ALLOWED_DOMAINS)
-    except Exception:
-        return False
-
-def sanitize_filename(name):
-    base = os.path.basename(name)
-    base = base.replace('..', '').replace('/', '').replace('\\', '')
-    sanitized = re.sub(r'[^a-zA-Z0-9 \-_.]', '', base)
-    sanitized = re.sub(r'\s+', ' ', sanitized)
-    sanitized = re.sub(r'\.+', '.', sanitized)
-    return sanitized.strip()[:100]
 
 # Download task queue to serialize heavy yt-dlp operations (prevents OOM on Render Free tier)
 download_queue = queue.Queue()
@@ -124,7 +99,16 @@ def get_ydl_opts(custom_opts=None):
         }
     }
     if os.path.exists(COOKIES_FILE):
-        opts['cookiefile'] = COOKIES_FILE
+        # yt-dlp tries to write back session data to the cookiefile.
+        # Since Render's secrets are read-only, copy them to a writeable folder.
+        writeable_cookies_path = os.path.join(DOWNLOADS_DIR, "cookies_writeable.txt")
+        try:
+            import shutil
+            shutil.copy2(COOKIES_FILE, writeable_cookies_path)
+            opts['cookiefile'] = writeable_cookies_path
+        except Exception as copy_err:
+            print(f"Error copying cookies to writeable path: {copy_err}")
+            opts['cookiefile'] = COOKIES_FILE
     if custom_opts:
         for k, v in custom_opts.items():
             if k == 'extractor_args':
@@ -442,117 +426,6 @@ def api_debug():
 
 # --- BACKGROUND TASK RUNNER ---
 
-def fallback_cobalt_download(url, download_id):
-    instances = [
-        "https://api.cobalt.tools/",
-        "https://co.wuk.sh/",
-        "https://cobalt.api.ryz.cx/",
-        "https://cobalt.kuro.team/",
-        "https://cobalt.moe/",
-        "https://cobalt.sh/"
-    ]
-    
-    # Dynamically query working instances from the public cobalt tracker directory
-    try:
-        print("Fetching dynamic active instances from cobalt.directory...")
-        req = urllib.request.Request(
-            "https://cobalt.directory/api/working?type=api",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as res:
-            data = json.loads(res.read().decode('utf-8'))
-            if isinstance(data, list):
-                for inst in data:
-                    url_val = inst.get('url')
-                    if url_val and url_val not in instances:
-                        if not url_val.endswith('/'):
-                            url_val += '/'
-                        instances.append(url_val)
-            elif isinstance(data, dict) and 'instances' in data:
-                for inst in data['instances']:
-                    url_val = inst.get('url')
-                    if url_val and url_val not in instances:
-                        if not url_val.endswith('/'):
-                            url_val += '/'
-                        instances.append(url_val)
-        print(f"Dynamically populated instances. Testing total pool size: {len(instances)}")
-    except Exception as dir_err:
-        print(f"Could not fetch dynamic instances from tracker directory: {dir_err}")
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Origin": "https://cobalt.tools",
-        "Referer": "https://cobalt.tools/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    payload = {
-        "url": url,
-        "downloadMode": "audio",
-        "audioFormat": "mp3",
-        "isAudioOnly": True
-    }
-    
-    for instance in instances:
-        try:
-            log_msg = f"> Attempting backup stream resolver via: {instance}"
-            print(log_msg)
-            with downloads_lock:
-                if download_id in active_downloads:
-                    active_downloads[download_id]['logs'].append(log_msg)
-                    
-            req = urllib.request.Request(
-                instance, 
-                data=json.dumps(payload).encode('utf-8'),
-                headers=headers,
-                method='POST'
-            )
-            with urllib.request.urlopen(req, timeout=12) as res:
-                response_data = json.loads(res.read().decode('utf-8'))
-                stream_url = response_data.get('url')
-                if stream_url:
-                    success_msg = f"> Backup resolved audio link successfully!"
-                    print(success_msg)
-                    with downloads_lock:
-                        if download_id in active_downloads:
-                            active_downloads[download_id]['logs'].append(success_msg)
-                            
-                    output_filename = f"{download_id}.mp3"
-                    output_path = os.path.join(DOWNLOADS_DIR, output_filename)
-                    
-                    stream_req = urllib.request.Request(stream_url, headers={"User-Agent": headers["User-Agent"]})
-                    with urllib.request.urlopen(stream_req) as stream_res:
-                        with open(output_path, 'wb') as out_f:
-                            while True:
-                                chunk = stream_res.read(1024 * 64)
-                                if not chunk:
-                                    break
-                                out_f.write(chunk)
-                    return True
-                else:
-                    err_msg = f"[WARNING] Resolver {instance} responded: {response_data}"
-                    print(err_msg)
-                    with downloads_lock:
-                        if download_id in active_downloads:
-                            active_downloads[download_id]['logs'].append(err_msg)
-        except urllib.error.HTTPError as he:
-            try:
-                err_body = he.read().decode('utf-8', errors='ignore')
-                err_msg = f"[WARNING] Resolver {instance} responded with HTTP {he.code}: {err_body}"
-            except Exception:
-                err_msg = f"[WARNING] Resolver {instance} responded with HTTP {he.code}"
-            print(err_msg)
-            with downloads_lock:
-                if download_id in active_downloads:
-                    active_downloads[download_id]['logs'].append(err_msg)
-        except Exception as e:
-            err_msg = f"[WARNING] Resolver {instance} encountered an error: {e}"
-            print(err_msg)
-            with downloads_lock:
-                if download_id in active_downloads:
-                    active_downloads[download_id]['logs'].append(err_msg)
-    return False
-
 
 def process_download_task(download_id, url, target_title, target_artist, target_album, bitrate):
     print(f"Starting background download {download_id} for URL: {url}")
@@ -651,8 +524,12 @@ def process_download_task(download_id, url, target_title, target_artist, target_
                 active_downloads[download_id]['logs'].append(f"[WARNING] Primary download engine encountered a challenge: {yt_err}")
                 active_downloads[download_id]['logs'].append("> Activating backup extraction engine...")
                 
-            # Trigger the cobalt API self-healing fallback
-            success = fallback_cobalt_download(url, download_id)
+            # Trigger the cobalt API self-healing fallback with thread-safe log callbacks
+            def append_log(msg):
+                with downloads_lock:
+                    if download_id in active_downloads:
+                        active_downloads[download_id]['logs'].append(msg)
+            success = fallback_cobalt_download(url, download_id, DOWNLOADS_DIR, log_callback=append_log)
             if success:
                 final_filename = f"{download_id}.mp3"
             else:
