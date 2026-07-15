@@ -29,6 +29,29 @@ DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "downloads")
 if not os.path.exists(DOWNLOADS_DIR):
     os.makedirs(DOWNLOADS_DIR)
 
+COOKIES_FILE = os.path.join(WORKSPACE_DIR, "cookies.txt")
+
+def get_ydl_opts(custom_opts=None):
+    opts = {
+        'nocheckcertificate': True,
+        'quiet': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': 'ios,android'
+            }
+        }
+    }
+    if os.path.exists(COOKIES_FILE):
+        opts['cookiefile'] = COOKIES_FILE
+    if custom_opts:
+        for k, v in custom_opts.items():
+            if k == 'extractor_args':
+                if 'youtube' in v:
+                    opts['extractor_args']['youtube'].update(v['youtube'])
+            else:
+                opts[k] = v
+    return opts
+
 # Global Registry to track background download tasks
 # download_id -> {status, percentage, speed, eta, size_mb, filename, logs: [], error: None}
 active_downloads = {}
@@ -86,17 +109,10 @@ def api_search():
         
     print(f"Searching YouTube for: {query}")
     
-    ydl_opts = {
+    ydl_opts = get_ydl_opts({
         'default_search': 'ytsearch',
-        'nocheckcertificate': True,
-        'quiet': True,
         'extract_flat': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': 'ios,android'
-            }
-        }
-    }
+    })
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -211,16 +227,9 @@ def api_stream():
     if not video_id:
         return "Video ID required", 400
         
-    ydl_opts = {
+    ydl_opts = get_ydl_opts({
         'format': 'bestaudio/best',
-        'nocheckcertificate': True,
-        'quiet': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': 'ios,android'
-            }
-        }
-    }
+    })
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -285,15 +294,7 @@ def api_info():
     if not video_id:
         return jsonify({"error": "Video ID required"}), 400
         
-    ydl_opts = {
-        'nocheckcertificate': True,
-        'quiet': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': 'ios,android'
-            }
-        }
-    }
+    ydl_opts = get_ydl_opts()
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -359,35 +360,21 @@ def process_download_task(download_id, url, target_title, target_artist, target_
     # Configure yt-dlp options
     temp_template = os.path.join(DOWNLOADS_DIR, f"{download_id}_%(title)s.%(ext)s")
     
-    ydl_opts = {
+    ydl_opts = get_ydl_opts({
         'format': 'bestaudio/best',
         'outtmpl': temp_template,
         'logger': YtdlpLogger(download_id),
         'progress_hooks': [progress_hook],
-        'nocheckcertificate': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': 'ios,android'
-            }
-        },
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': bitrate,
         }],
-    }
+    })
     
     try:
         # Extract metadata info first
-        with yt_dlp.YoutubeDL({
-            'nocheckcertificate': True, 
-            'quiet': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': 'ios,android'
-                }
-            }
-        }) as ydl:
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
             
             # Resolve tags if not custom provided
