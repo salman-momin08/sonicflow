@@ -45,12 +45,15 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
     ctx.verify_mode = ssl.CERT_NONE
 
     instances = [
-        "https://api.cobalt.tools/",
-        "https://co.wuk.sh/",
-        "https://cobalt.api.ryz.cx/",
-        "https://cobalt.kuro.team/",
-        "https://cobalt.moe/",
-        "https://cobalt.sh/"
+        "https://api-cobalt.eversiege.network/",
+        "https://api.cobalt.liubquanti.click/",
+        "https://cobalt.omega.wolfy.love/",
+        "https://melon.clxxped.lol/",
+        "https://nuko-c.meowing.de/",
+        "https://api.qwkuns.me/",
+        "https://grapefruit.clxxped.lol/",
+        "https://subito-c.meowing.de/",
+        "https://api.cobalt.tools/"
     ]
     
     try:
@@ -61,13 +64,14 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
         )
         with urllib.request.urlopen(req, timeout=5, context=ctx) as res:
             data = json.loads(res.read().decode('utf-8'))
-            if isinstance(data, list):
-                for inst in data:
-                    url_val = inst.get('url')
-                    if url_val and url_val not in instances:
-                        if not url_val.endswith('/'):
-                            url_val += '/'
-                        instances.append(url_val)
+            if isinstance(data, dict) and 'data' in data:
+                yt_list = data['data'].get('youtube')
+                if isinstance(yt_list, list):
+                    for url_val in yt_list:
+                        if url_val not in instances:
+                            if not url_val.endswith('/'):
+                                url_val += '/'
+                            instances.insert(0, url_val)  # Prioritize dynamic working ones
     except Exception as dir_err:
         log(f"[WARNING] Could not fetch dynamic instances: {dir_err}")
     
