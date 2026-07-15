@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  sonicflow:
+    build: .
+    container_name: sonicflow-downloader
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persists downloaded audio files to the local downloads directory on the host machine
+      - ./downloads:/app/downloads
+    restart: unless-stopped
+    environment:
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000

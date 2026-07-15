@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SonicFlow - High Quality MP3 Downloader and Music Streaming Player. Search, convert, and download audio up to 320kbps.">
+    <title>SonicFlow | High Quality MP3 Downloader & Audio Player</title>
+    
+    <!-- Google Fonts: Outfit (headings) & Inter (UI/body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="theme-royal-glass">
+    <!-- App Outer Grid -->
+    <div class="app-container">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">
+                    <i class="fa-solid fa-wand-magic-sparkles brand-icon"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>SonicFlow</h1>
+                    <span>HQ MP3 HUB</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-tab="explore">
+                    <i class="fa-solid fa-compass"></i>
+                    <span>Explore</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <span>Search Engine</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="converter">
+                    <i class="fa-solid fa-rotate"></i>
+                    <span>URL Converter</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="library">
+                    <i class="fa-solid fa-music"></i>
+                    <span>My Library</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="settings">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot green"></span>
+                    <span class="status-text">Server Online</span>
+                </div>
+                <div class="quota-progress">
+                    <div class="quota-labels">
+                        <span>Speed Limit</span>
+                        <span>Unlimited</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-fill" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Application Workspace -->
+        <main class="main-content">
+            
+            <!-- Header Bar -->
+            <header class="main-header">
+                <div class="header-left">
+                    <button class="menu-toggle-btn d-none"><i class="fa-solid fa-bars"></i></button>
+                    <h2 id="page-title">Explore Tracks</h2>
+                </div>
+                <div class="header-right">
+                    <div class="quick-stats">
+                        <div class="stat-bubble">
+                            <i class="fa-solid fa-bolt text-glow-cyan"></i>
+                            <span>Audio Quality: <strong>320kbps</strong></span>
+                        </div>
+                    </div>
+                    <div class="theme-quick-toggle" id="theme-btn" title="Quick Theme Switch">
+                        <i class="fa-solid fa-circle-half-stroke"></i>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- VIEW 1: Explore / Dashboard -->
+            <section id="explore-tab" class="tab-panel active">
+                <!-- Hero Banner -->
+                <div class="hero-banner">
+                    <div class="hero-content">
+                        <span class="badge">PREMIUM STREAMING & DOWNLOAD</span>
+                        <h2>Studio Quality Sound, Straight to Your Device</h2>
+                        <p>Search millions of high-fidelity tracks, customize your listening profile, and download high-quality MP3s for offline play.</p>
+                        <button class="btn btn-primary" id="explore-to-search-btn">
+                            <i class="fa-solid fa-magnifying-glass"></i> Start Searching
+                        </button>
+                    </div>
+                    <div class="hero-graphic">
+                        <div class="wave-lines-container">
+                            <div class="wave-line"></div>
+                            <div class="wave-line"></div>
+                            <div class="wave-line"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Genre Filters -->
+                <div class="section-container">
+                    <h3 class="section-title">Browse Genres</h3>
+                    <div class="genres-grid">
+                        <div class="genre-card" data-genre="lofi">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-mug-hot"></i>
+                            <span>Lo-Fi Beats</span>
+                        </div>
+                        <div class="genre-card" data-genre="synthwave">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-user-astronaut"></i>
+                            <span>Synthwave</span>
+                        </div>
+                        <div class="genre-card" data-genre="rock">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-guitar"></i>
+                            <span>Rock</span>
+                        </div>
+                        <div class="genre-card" data-genre="acoustic">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-campground"></i>
+                            <span>Acoustic</span>
+                        </div>
+                        <div class="genre-card" data-genre="cinematic">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-film"></i>
+                            <span>Cinematic</span>
+                        </div>
+                        <div class="genre-card" data-genre="electronic">
+                            <div class="genre-overlay"></div>
+                            <i class="fa-solid fa-bolt"></i>
+                            <span>Electronic</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trending / Featured Tracks -->
+                <div class="section-container">
+                    <div class="section-header">
+                        <h3 class="section-title">Trending Now</h3>
+                        <span class="view-all-label">Curated Selection</span>
+                    </div>
+                    <div class="tracks-list" id="trending-tracks-container">
+                        <!-- Populated dynamically via JS -->
+                        <div class="loader-container">
+                            <div class="spinner"></div>
+                            <p>Loading curated tracks...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- VIEW 2: Search Engine -->
+            <section id="search-tab" class="tab-panel">
+                <div class="search-hero">
+                    <div class="search-bar-wrapper">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="search-input" placeholder="Search track name, artist, genre, or mood..." autocomplete="off">
+                        <button class="btn btn-search" id="search-trigger-btn">Search</button>
+                    </div>
+                    
+                    <div class="search-settings">
+                        <div class="setting-group">
+                            <label for="search-source">Source Network:</label>
+                            <select id="search-source">
+                                <option value="youtube" selected>Global YouTube Search (Mainstream)</option>
+                                <option value="archive">Global Audio Library (Archive.org)</option>
+                                <option value="jamendo">Indie Music Network (Jamendo)</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label for="search-limit">Show:</label>
+                            <select id="search-limit">
+                                <option value="12">12 Tracks</option>
+                                <option value="24" selected>24 Tracks</option>
+                                <option value="48">48 Tracks</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label for="download-quality-pref">Preferred Quality:</label>
+                            <select id="download-quality-pref">
+                                <option value="320">Ultra High (320kbps)</option>
+                                <option value="192" selected>High (192kbps)</option>
+                                <option value="128">Standard (128kbps)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Search Results Section -->
+                <div class="section-container">
+                    <div class="section-header">
+                        <h3 class="section-title" id="search-results-title">Featured Suggestions</h3>
+                    </div>
+                    
+                    <div class="search-results-grid" id="search-results-container">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+                </div>
+            </section>
+            
+            <!-- VIEW 3: URL Converter -->
+            <section id="converter-tab" class="tab-panel">
+                <div class="converter-wrapper">
+                    <div class="converter-box">
+                        <div class="converter-header">
+                            <div class="icon-circle">
+                                <i class="fa-solid fa-cloud-arrow-down"></i>
+                            </div>
+                            <h3>Universal Audio Extractor</h3>
+                            <p>Paste any YouTube, SoundCloud, or public media stream link to extract studio-grade MP3.</p>
+                        </div>
+                        
+                        <div class="input-form">
+                            <div class="link-input-wrapper">
+                                <i class="fa-solid fa-link input-icon"></i>
+                                <input type="url" id="converter-url-input" placeholder="https://www.youtube.com/watch?v=... or SoundCloud track URL" required>
+                            </div>
+                            
+                            <div class="conversion-options">
+                                <div class="opt-group">
+                                    <label>Bitrate Resolution</label>
+                                    <div class="radio-tiles">
+                                        <label class="tile-radio">
+                                            <input type="radio" name="conv-bitrate" value="320" checked>
+                                            <span class="tile-card">
+                                                <span class="kbps">320kbps</span>
+                                                <span class="label">Extreme HQ</span>
+                                            </span>
+                                        </label>
+                                        <label class="tile-radio">
+                                            <input type="radio" name="conv-bitrate" value="192">
+                                            <span class="tile-card">
+                                                <span class="kbps">192kbps</span>
+                                                <span class="label">Standard HQ</span>
+                                            </span>
+                                        </label>
+                                        <label class="tile-radio">
+                                            <input type="radio" name="conv-bitrate" value="128">
+                                            <span class="tile-card">
+                                                <span class="kbps">128kbps</span>
+                                                <span class="label">Standard</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="opt-group">
+                                    <label>Format</label>
+                                    <select id="converter-format">
+                                        <option value="mp3" selected>MP3 (MPEG Layer-3)</option>
+                                        <option value="wav">WAV (Lossless PCM)</option>
+                                        <option value="flac">FLAC (Free Lossless Codec)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-block btn-large" id="convert-btn">
+                                <i class="fa-solid fa-play"></i> Initialize Audio Extraction
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Dashboard Logs / Status Panel (Hidden by default) -->
+                    <div class="converter-dashboard d-none" id="converter-dashboard">
+                        <div class="dashboard-top">
+                            <div class="loading-bar-wrapper">
+                                <div class="dashboard-status-text">
+                                    <span id="conv-status-message">Connecting to stream source...</span>
+                                    <span id="conv-percentage">0%</span>
+                                </div>
+                                <div class="progress-bar-bg">
+                                    <div class="progress-fill glow-effect" id="conv-progress-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="dashboard-stats-grid">
+                            <div class="dash-stat">
+                                <span class="label">Speed</span>
+                                <span class="value" id="conv-speed">-- MB/s</span>
+                            </div>
+                            <div class="dash-stat">
+                                <span class="label">Time Remaining</span>
+                                <span class="value" id="conv-eta">-- s</span>
+                            </div>
+                            <div class="dash-stat">
+                                <span class="label">Total Size</span>
+                                <span class="value" id="conv-size">-- MB</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Terminal Log Screen -->
+                        <div class="terminal-container">
+                            <div class="terminal-header">
+                                <div class="terminal-buttons">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="terminal-title">conversion_daemon.sh</span>
+                            </div>
+                            <div class="terminal-body" id="conv-logs">
+                                <div class="log-line text-cyan">> Executing task conversion...</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Success / Final Download Card (Hidden until finished) -->
+                        <div class="success-card d-none" id="conv-success-card">
+                            <div class="success-icon-wrapper">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                            <div class="success-details">
+                                <h4 id="conv-success-title">Audio Track Extracted Successfully!</h4>
+                                <p id="conv-success-meta">Bitrate: 320kbps | Format: MP3 | Length: 3:45</p>
+                            </div>
+                            <button class="btn btn-success" id="conv-download-btn">
+                                <i class="fa-solid fa-arrow-down-to-bracket"></i> Download Extracted Audio (Direct)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- VIEW 4: My Library -->
+            <section id="library-tab" class="tab-panel">
+                <div class="library-header-stats">
+                    <div class="lib-stat-card">
+                        <i class="fa-solid fa-arrow-down-long icon-bg-blue"></i>
+                        <div class="stat-info">
+                            <h4 id="lib-total-downloads">0</h4>
+                            <span>Total Downloads</span>
+                        </div>
+                    </div>
+                    <div class="lib-stat-card">
+                        <i class="fa-solid fa-heart icon-bg-pink"></i>
+                        <div class="stat-info">
+                            <h4 id="lib-total-favorites">0</h4>
+                            <span>Favorites</span>
+                        </div>
+                    </div>
+                    <div class="lib-stat-card">
+                        <i class="fa-solid fa-database icon-bg-green"></i>
+                        <div class="stat-info">
+                            <h4 id="lib-storage-saved">0 MB</h4>
+                            <span>Storage Downloaded</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="library-tabs-container">
+                    <div class="library-nav">
+                        <button class="lib-nav-btn active" data-lib-tab="downloads">
+                            <i class="fa-solid fa-download"></i> Downloads History
+                        </button>
+                        <button class="lib-nav-btn" data-lib-tab="favorites">
+                            <i class="fa-solid fa-heart"></i> My Favorites
+                        </button>
+                    </div>
+                    
+                    <!-- Downloads History List -->
+                    <div class="lib-panel active" id="lib-downloads-panel">
+                        <div class="library-list" id="library-downloads-container">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <h4>No downloads yet</h4>
+                                <p>Tracks you download will appear here for easy access.</p>
+                                <button class="btn btn-outline" id="lib-to-search-btn1">Find tracks</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Favorites List -->
+                    <div class="lib-panel" id="lib-favorites-panel">
+                        <div class="library-list" id="library-favorites-container">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-heart"></i>
+                                <h4>No favorite tracks</h4>
+                                <p>Click the heart icon on any song to save it here.</p>
+                                <button class="btn btn-outline" id="lib-to-search-btn2">Find tracks</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- VIEW 5: Settings -->
+            <section id="settings-tab" class="tab-panel">
+                <div class="settings-grid">
+                    <!-- Theme Selector Card -->
+                    <div class="settings-card">
+                        <h3>Visual Customization</h3>
+                        <p>Personalize the appearance and glow effects of the platform.</p>
+                        
+                        <div class="theme-picker">
+                            <div class="theme-option active" data-theme="theme-royal-glass" style="background: linear-gradient(135deg, #0A1128, #101F42);">
+                                <span class="theme-name">Royal Glass</span>
+                            </div>
+                            <div class="theme-option" data-theme="theme-neon-cyberpunk" style="background: linear-gradient(135deg, #05050A, #120A2A);">
+                                <span class="theme-name">Cyberpunk Glow</span>
+                            </div>
+                            <div class="theme-option" data-theme="theme-obsidian-dark" style="background: linear-gradient(135deg, #0f0f0f, #1e1e1e);">
+                                <span class="theme-name">Obsidian Carbon</span>
+                            </div>
+                            <div class="theme-option" data-theme="theme-emerald-gold" style="background: linear-gradient(135deg, #04100E, #0A241F);">
+                                <span class="theme-name">Emerald Gold</span>
+                            </div>
+                            <div class="theme-option" data-theme="theme-midnight-blue" style="background: linear-gradient(135deg, #000E1A, #001A33);">
+                                <span class="theme-name">Midnight Sunset</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Preferences Card -->
+                    <div class="settings-card">
+                        <h3>Audio Settings</h3>
+                        <p>Configure the internal Web Audio API engine and streaming preferences.</p>
+                        
+                        <div class="preferences-form">
+                            <div class="pref-row">
+                                <div class="pref-label">
+                                    <strong>High Fidelity Equalizer</strong>
+                                    <span>Enable 3-Band Parametric Equalizer.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="pref-eq-toggle" checked>
+                                    <span class="slider-round"></span>
+                                </label>
+                            </div>
+                            <div class="pref-row">
+                                <div class="pref-label">
+                                    <strong>Default Bitrate Quality</strong>
+                                    <span>Default download bitrate.</span>
+                                </div>
+                                <select id="pref-bitrate">
+                                    <option value="320">320 kbps (Super High Quality)</option>
+                                    <option value="192" selected>192 kbps (Standard HQ)</option>
+                                    <option value="128">128 kbps (Standard quality)</option>
+                                </select>
+                            </div>
+                            <div class="pref-row">
+                                <div class="pref-label">
+                                    <strong>Audio Visualizer Style</strong>
+                                    <span>Select pattern for the audio feedback canvas.</span>
+                                </div>
+                                <select id="pref-visualizer-style">
+                                    <option value="bars" selected>Glow Frequency Bars</option>
+                                    <option value="wave">Sinusoidal Audio Waveform</option>
+                                    <option value="circular">Radial Dynamic Visualizer</option>
+                                    <option value="none">Disabled (Low Power)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Developer Settings -->
+                    <div class="settings-card">
+                        <h3>API Configuration</h3>
+                        <p>Change external content search and metadata parsing engines.</p>
+                        
+                        <div class="preferences-form">
+                            <div class="input-field-group">
+                                <label for="settings-jamendo-key">Jamendo Developer Client ID</label>
+                                <input type="text" id="settings-jamendo-key" value="709fa152" placeholder="Input custom client_id">
+                                <span class="input-help">Currently using test token. Provide a personal developer Client ID to increase rate limits.</span>
+                            </div>
+                            
+                            <button class="btn btn-outline" id="save-settings-btn" style="margin-top: 10px;">Save API Settings</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+        </main>
+        
+        <!-- Sticky Bottom Playback Bar -->
+        <footer class="bottom-bar">
+            <!-- Part 1: Track Metadata -->
+            <div class="track-info-wrapper">
+                <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop" alt="Album Cover" class="player-cover-art" id="player-cover">
+                <div class="player-metadata">
+                    <h4 class="player-track-name" id="player-title">Welcome to SonicFlow</h4>
+                    <span class="player-artist-name" id="player-artist">Select a track to start listening</span>
+                </div>
+                <button class="btn-icon favorite-btn" id="player-fav-btn" title="Add to Favorites">
+                    <i class="fa-regular fa-heart"></i>
+                </button>
+                <button class="btn-icon favorite-btn" id="player-share-btn" title="Share Active Track">
+                    <i class="fa-solid fa-share-nodes"></i>
+                </button>
+            </div>
+            
+            <!-- Part 2: Media Timeline / Progress Controls -->
+            <div class="playback-controls-wrapper">
+                <div class="controls-buttons">
+                    <button class="btn-icon secondary-control" id="player-shuffle" title="Shuffle"><i class="fa-solid fa-shuffle"></i></button>
+                    <button class="btn-icon" id="player-prev" title="Previous Track"><i class="fa-solid fa-backward-step"></i></button>
+                    <button class="btn-icon main-control" id="player-play-pause" title="Play/Pause">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                    <button class="btn-icon" id="player-next" title="Next Track"><i class="fa-solid fa-forward-step"></i></button>
+                    <button class="btn-icon secondary-control" id="player-repeat" title="Repeat"><i class="fa-solid fa-repeat"></i></button>
+                </div>
+                
+                <div class="progress-container">
+                    <span class="time-label" id="player-current-time">0:00</span>
+                    <div class="progress-seeker-bg" id="player-seeker-container">
+                        <input type="range" id="player-seeker" min="0" max="100" value="0">
+                        <div class="seeker-progress-fill" id="player-seeker-fill" style="width: 0%;"></div>
+                    </div>
+                    <span class="time-label" id="player-duration">0:00</span>
+                </div>
+            </div>
+            
+            <!-- Part 3: Live Audio Visualizer Canvas & Tools -->
+            <div class="player-tools-wrapper">
+                <!-- Small Live Audio Visualizer -->
+                <div class="visualizer-container" id="visualizer-toggle-btn" title="Click to cycle visualizer styles">
+                    <canvas id="visualizer-canvas"></canvas>
+                </div>
+                
+                <!-- Tools (EQ, Volume) -->
+                <div class="tools-buttons">
+                    <button class="btn-icon tool-btn" id="eq-toggle-btn" title="Equalizer Settings">
+                        <i class="fa-solid fa-sliders"></i>
+                    </button>
+                    
+                    <div class="volume-container">
+                        <button class="btn-icon tool-btn" id="volume-toggle-btn" title="Mute/Unmute">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </button>
+                        <div class="volume-slider-wrapper">
+                            <input type="range" id="volume-slider" min="0" max="100" value="80">
+                            <div class="volume-progress-fill" id="volume-fill" style="width: 80%;"></div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="player-download-btn" title="Download Active Track">
+                        <i class="fa-solid fa-download"></i> <span>Download</span>
+                    </button>
+                </div>
+            </div>
+        </footer>
+        
+        <!-- Floating Equalizer Panel -->
+        <div class="eq-dropdown-panel d-none" id="eq-dropdown">
+            <div class="eq-header">
+                <h4>HIFI Equalizer Settings</h4>
+                <button class="close-btn" id="eq-close-btn">&times;</button>
+            </div>
+            
+            <div class="eq-preset-selector">
+                <label for="eq-presets">Preset EQ</label>
+                <select id="eq-presets">
+                    <option value="flat" selected>Flat (Neutral)</option>
+                    <option value="bass">Bass Booster</option>
+                    <option value="vocal">Vocal Enhancer</option>
+                    <option value="electronic">Electronic (Club)</option>
+                    <option value="acoustic">Acoustic Studio</option>
+                </select>
+            </div>
+            
+            <div class="eq-sliders">
+                <div class="eq-slider-col">
+                    <span class="db-label" id="eq-bass-val">0dB</span>
+                    <div class="eq-track">
+                        <input type="range" id="eq-bass" min="-12" max="12" value="0" orient="vertical">
+                    </div>
+                    <span class="band-label">Bass</span>
+                </div>
+                <div class="eq-slider-col">
+                    <span class="db-label" id="eq-mid-val">0dB</span>
+                    <div class="eq-track">
+                        <input type="range" id="eq-mid" min="-12" max="12" value="0" orient="vertical">
+                    </div>
+                    <span class="band-label">Mid</span>
+                </div>
+                <div class="eq-slider-col">
+                    <span class="db-label" id="eq-treble-val">0dB</span>
+                    <div class="eq-track">
+                        <input type="range" id="eq-treble" min="-12" max="12" value="0" orient="vertical">
+                    </div>
+                    <span class="band-label">Treble</span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- App Core Script -->
+    <script src="app.js"></script>
+</body>
+</html>
