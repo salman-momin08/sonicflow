@@ -440,9 +440,40 @@ def api_debug():
 
 def fallback_cobalt_download(url, download_id):
     instances = [
-        "https://api.cobalt.tools",
-        "https://co.wuk.sh"
+        "https://api.cobalt.tools/",
+        "https://co.wuk.sh/",
+        "https://cobalt.api.ryz.cx/",
+        "https://cobalt.kuro.team/",
+        "https://cobalt.moe/",
+        "https://cobalt.sh/"
     ]
+    
+    # Dynamically query working instances from the public cobalt tracker directory
+    try:
+        print("Fetching dynamic active instances from cobalt.directory...")
+        req = urllib.request.Request(
+            "https://cobalt.directory/api/working?type=api",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as res:
+            data = json.loads(res.read().decode('utf-8'))
+            if isinstance(data, list):
+                for inst in data:
+                    url_val = inst.get('url')
+                    if url_val and url_val not in instances:
+                        if not url_val.endswith('/'):
+                            url_val += '/'
+                        instances.append(url_val)
+            elif isinstance(data, dict) and 'instances' in data:
+                for inst in data['instances']:
+                    url_val = inst.get('url')
+                    if url_val and url_val not in instances:
+                        if not url_val.endswith('/'):
+                            url_val += '/'
+                        instances.append(url_val)
+        print(f"Dynamically populated instances. Testing total pool size: {len(instances)}")
+    except Exception as dir_err:
+        print(f"Could not fetch dynamic instances from tracker directory: {dir_err}")
     
     headers = {
         "Accept": "application/json",
@@ -456,18 +487,28 @@ def fallback_cobalt_download(url, download_id):
     
     for instance in instances:
         try:
-            print(f"Attempting self-healing fallback via Cobalt API at: {instance}")
+            log_msg = f"> Attempting backup stream resolver via: {instance}"
+            print(log_msg)
+            with downloads_lock:
+                if download_id in active_downloads:
+                    active_downloads[download_id]['logs'].append(log_msg)
+                    
             req = urllib.request.Request(
                 instance, 
                 data=json.dumps(payload).encode('utf-8'),
                 headers=headers,
                 method='POST'
             )
-            with urllib.request.urlopen(req, timeout=15) as res:
+            with urllib.request.urlopen(req, timeout=12) as res:
                 response_data = json.loads(res.read().decode('utf-8'))
                 stream_url = response_data.get('url')
                 if stream_url:
-                    print(f"Cobalt resolved stream URL: {stream_url}")
+                    success_msg = f"> Backup resolved audio link successfully!"
+                    print(success_msg)
+                    with downloads_lock:
+                        if download_id in active_downloads:
+                            active_downloads[download_id]['logs'].append(success_msg)
+                            
                     output_filename = f"{download_id}.mp3"
                     output_path = os.path.join(DOWNLOADS_DIR, output_filename)
                     
@@ -479,10 +520,19 @@ def fallback_cobalt_download(url, download_id):
                                 if not chunk:
                                     break
                                 out_f.write(chunk)
-                    print(f"Successfully downloaded audio via Cobalt to: {output_path}")
                     return True
+                else:
+                    err_msg = f"[WARNING] Resolver {instance} responded: {response_data}"
+                    print(err_msg)
+                    with downloads_lock:
+                        if download_id in active_downloads:
+                            active_downloads[download_id]['logs'].append(err_msg)
         except Exception as e:
-            print(f"Cobalt instance {instance} failed: {e}")
+            err_msg = f"[WARNING] Resolver {instance} encountered an error: {e}"
+            print(err_msg)
+            with downloads_lock:
+                if download_id in active_downloads:
+                    active_downloads[download_id]['logs'].append(err_msg)
     return False
 
 
