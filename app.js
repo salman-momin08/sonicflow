@@ -1309,8 +1309,8 @@ class SonicFlowApp {
     async downloadTrack(track) {
         if (track.isYoutube) {
             this.switchTab('converter');
-            this.converterInput.value = `https://www.youtube.com/watch?v=${track.id}`;
-            this.startAudioConversion(this.converterInput.value);
+            this.converterUrlInput.value = `https://www.youtube.com/watch?v=${track.id}`;
+            this.startAudioConversion(this.converterUrlInput.value);
             return;
         }
 

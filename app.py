@@ -91,6 +91,11 @@ def api_search():
         'nocheckcertificate': True,
         'quiet': True,
         'extract_flat': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': 'ios,android'
+            }
+        }
     }
     
     try:
@@ -210,6 +215,11 @@ def api_stream():
         'format': 'bestaudio/best',
         'nocheckcertificate': True,
         'quiet': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': 'ios,android'
+            }
+        }
     }
     
     try:
@@ -278,6 +288,11 @@ def api_info():
     ydl_opts = {
         'nocheckcertificate': True,
         'quiet': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': 'ios,android'
+            }
+        }
     }
     
     try:
@@ -350,6 +365,11 @@ def process_download_task(download_id, url, target_title, target_artist, target_
         'logger': YtdlpLogger(download_id),
         'progress_hooks': [progress_hook],
         'nocheckcertificate': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': 'ios,android'
+            }
+        },
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -359,7 +379,15 @@ def process_download_task(download_id, url, target_title, target_artist, target_
     
     try:
         # Extract metadata info first
-        with yt_dlp.YoutubeDL({'nocheckcertificate': True, 'quiet': True}) as ydl:
+        with yt_dlp.YoutubeDL({
+            'nocheckcertificate': True, 
+            'quiet': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': 'ios,android'
+                }
+            }
+        }) as ydl:
             info = ydl.extract_info(url, download=False)
             
             # Resolve tags if not custom provided
