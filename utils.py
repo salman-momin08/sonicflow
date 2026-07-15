@@ -38,6 +38,12 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
             log_callback(msg)
         print(msg)
 
+    # Create unverified SSL context to bypass SSL validation errors on community-managed instances
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
     instances = [
         "https://api.cobalt.tools/",
         "https://co.wuk.sh/",
@@ -53,7 +59,7 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
             "https://cobalt.directory/api/working?type=api",
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
-        with urllib.request.urlopen(req, timeout=5) as res:
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as res:
             data = json.loads(res.read().decode('utf-8'))
             if isinstance(data, list):
                 for inst in data:
@@ -88,7 +94,7 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
                 headers=headers,
                 method='POST'
             )
-            with urllib.request.urlopen(req, timeout=12) as res:
+            with urllib.request.urlopen(req, timeout=12, context=ctx) as res:
                 response_data = json.loads(res.read().decode('utf-8'))
                 stream_url = response_data.get('url')
                 if stream_url:
@@ -97,7 +103,7 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
                     output_path = os.path.join(downloads_dir, output_filename)
                     
                     stream_req = urllib.request.Request(stream_url, headers={"User-Agent": headers["User-Agent"]})
-                    with urllib.request.urlopen(stream_req) as stream_res:
+                    with urllib.request.urlopen(stream_req, context=ctx) as stream_res:
                         with open(output_path, 'wb') as out_f:
                             while True:
                                 chunk = stream_res.read(1024 * 64)
