@@ -191,10 +191,14 @@ def api_search():
         
     print(f"Searching YouTube for: {query}")
     
-    ydl_opts = get_ydl_opts({
+    # Search is lightweight and doesn't require cookies. Removing cookies prevents
+    # search failures if the cookies file contains any invalid or expired Google sessions.
+    ydl_opts = {
+        'nocheckcertificate': True,
+        'quiet': True,
         'default_search': 'ytsearch',
         'extract_flat': True,
-    })
+    }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
