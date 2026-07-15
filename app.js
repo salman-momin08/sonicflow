@@ -1532,7 +1532,7 @@ class SonicFlowApp {
                         this.convLogs.scrollTop = this.convLogs.scrollHeight;
                     }
                     
-                    this.updateConvProgress(task.percentage, task.speed, task.eta, task.size_mb);
+                    this.updateConvProgress(task.percentage, task.speed, task.eta, task.size_mb, task.status);
                     
                     if (task.status === 'completed') {
                         clearInterval(progressInterval);
@@ -1560,11 +1560,13 @@ class SonicFlowApp {
         }
     }
     
-    updateConvProgress(pct, speed, eta, size) {
+    updateConvProgress(pct, speed, eta, size, status = '') {
         this.convProgressFill.style.width = `${pct}%`;
         this.convPercentage.textContent = `${pct}%`;
         
-        if (pct === 0) {
+        if (status === 'queued') {
+            this.convStatusMessage.textContent = "Queued... Waiting for previous downloads to finish.";
+        } else if (pct === 0) {
             this.convStatusMessage.textContent = "Connecting to media stream host...";
         } else if (pct < 40) {
             this.convStatusMessage.textContent = "Extracting audio tracks...";

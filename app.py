@@ -3,7 +3,10 @@ import sys
 import time
 import json
 import threading
+import queue
+import re
 import urllib.request
+import urllib.parse
 from flask import Flask, request, jsonify, send_from_directory, Response
 
 # Core Python libraries for audio downloading & metadata
@@ -38,6 +41,77 @@ if os.path.exists(COOKIES_FILE_RENDER):
     print("Render secret cookies.txt detected.")
 else:
     COOKIES_FILE = COOKIES_FILE_LOCAL
+
+# Whitelist of allowed domains to prevent SSRF
+ALLOWED_DOMAINS = {
+    'youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be',
+    'soundcloud.com', 'www.soundcloud.com',
+    'jamendo.com', 'www.jamendo.com',
+    'archive.org', 'www.archive.org'
+}
+
+def is_safe_url(url):
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        host = parsed.netloc.lower()
+        if ':' in host:
+            host = host.split(':')[0]
+        return any(host == domain or host.endswith('.' + domain) for domain in ALLOWED_DOMAINS)
+    except Exception:
+        return False
+
+def sanitize_filename(name):
+    base = os.path.basename(name)
+    base = base.replace('..', '').replace('/', '').replace('\\', '')
+    sanitized = re.sub(r'[^a-zA-Z0-9 \-_.]', '', base)
+    sanitized = re.sub(r'\s+', ' ', sanitized)
+    sanitized = re.sub(r'\.+', '.', sanitized)
+    return sanitized.strip()[:100]
+
+# Download task queue to serialize heavy yt-dlp operations (prevents OOM on Render Free tier)
+download_queue = queue.Queue()
+
+def download_worker():
+    print("Starting background download worker daemon...")
+    while True:
+        try:
+            task = download_queue.get()
+            if task is None:
+                break
+            download_id, url, target_title, target_artist, target_album, bitrate = task
+            print(f"Worker dequeued task {download_id}. Processing...")
+            try:
+                process_download_task(download_id, url, target_title, target_artist, target_album, bitrate)
+            except Exception as task_err:
+                print(f"Worker task processing error: {task_err}")
+            finally:
+                download_queue.task_done()
+        except Exception as queue_err:
+            print(f"Worker critical queue error: {queue_err}")
+            time.sleep(1)
+
+def cleanup_daemon():
+    print("Starting background file cleanup daemon...")
+    while True:
+        try:
+            now = time.time()
+            if os.path.exists(DOWNLOADS_DIR):
+                for file in os.listdir(DOWNLOADS_DIR):
+                    filepath = os.path.join(DOWNLOADS_DIR, file)
+                    if os.path.isfile(filepath):
+                        # Purge files older than 2 hours (7200 seconds)
+                        if now - os.path.getmtime(filepath) > 7200:
+                            os.remove(filepath)
+                            print(f"Cleanup daemon purged old file: {file}")
+        except Exception as e:
+            print(f"Error in cleanup daemon execution: {e}")
+        time.sleep(3600) # Execute hourly
+
+# Start Background Daemon Threads
+threading.Thread(target=download_worker, daemon=True).start()
+threading.Thread(target=cleanup_daemon, daemon=True).start()
 
 def get_ydl_opts(custom_opts=None):
     opts = {
@@ -165,27 +239,30 @@ def api_download():
     if not url:
         return jsonify({"error": "URL parameter is required"}), 400
         
+    # Security check: verify URL is safe and whitelisted (prevents SSRF)
+    if not is_safe_url(url):
+        return jsonify({"error": "Disallowed URL domain. Only YouTube, Soundcloud, Jamendo, and Archive.org links are permitted."}), 403
+        
     # Generate unique task id
     download_id = f"dl_{int(time.time())}"
     
     with downloads_lock:
         active_downloads[download_id] = {
-            "status": "pending",
+            "status": "queued",
             "percentage": 0,
             "speed": "--",
-            "eta": "--",
-            "size_mb": "0 MB",
+            "eta": "Queued...",
+            "size_mb": "--",
             "filename": "",
-            "logs": ["> Connecting to remote streaming cluster..."],
+            "logs": ["> Connecting to remote streaming cluster...", "> Task queued. Waiting for other downloads to finish..."],
             "error": None
         }
         
-    # Launch background thread to execute download & conversion
-    thread = threading.Thread(target=process_download_task, args=(download_id, url, title, artist, album, bitrate))
-    thread.daemon = True
-    thread.start()
+    # Queue task for sequential execution to prevent OOM spikes on Render
+    download_queue.put((download_id, url, title, artist, album, bitrate))
     
     return jsonify({"download_id": download_id})
+
 
 # 3. Retrieve Task Progress
 @app.route('/api/progress/<download_id>')
@@ -202,11 +279,11 @@ def api_retrieve(download_id):
     with downloads_lock:
         task = active_downloads.get(download_id)
         if not task:
-            return "Task not found", 404
+            return jsonify({"error": "Task not found"}), 404
         if task['status'] != 'completed':
-            return "Task is not finished", 400
+            return jsonify({"error": "Task is not finished"}), 400
             
-        filename = task['filename']
+        filename = sanitize_filename(task['filename'])
         
     return send_from_directory(DOWNLOADS_DIR, filename, as_attachment=True)
 
@@ -232,8 +309,9 @@ def api_downloads():
 @app.route('/api/stream')
 def api_stream():
     video_id = request.args.get('id', '').strip()
-    if not video_id:
-        return "Video ID required", 400
+    # Security input validation: prevent command injections or malicious characters
+    if not video_id or not re.match(r'^[a-zA-Z0-9_-]+$', video_id):
+        return jsonify({"error": "Invalid or missing Video ID"}), 400
         
     ydl_opts = get_ydl_opts({
         'format': 'bestaudio/best',
@@ -244,7 +322,7 @@ def api_stream():
             info = ydl.extract_info(video_id, download=False)
             stream_url = info.get('url')
             if not stream_url:
-                return "Stream URL not found", 404
+                return jsonify({"error": "Stream URL not found"}), 404
                 
             # Parse target headers for proxy request
             req_headers = {
@@ -288,19 +366,20 @@ def api_stream():
                 return response
                 
             except urllib.error.HTTPError as he:
-                return f"Upstream response failed: {he.code}", he.code
+                return jsonify({"error": f"Upstream response failed: {he.code}"}), he.code
                 
     except Exception as e:
         print(f"Streaming handler exception: {e}")
-        return str(e), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # 7. Get Video Metadata Info by ID (for link sharing)
 @app.route('/api/info')
 def api_info():
     video_id = request.args.get('id', '').strip()
-    if not video_id:
-        return jsonify({"error": "Video ID required"}), 400
+    # Security input validation: prevent command injections or malicious characters
+    if not video_id or not re.match(r'^[a-zA-Z0-9_-]+$', video_id):
+        return jsonify({"error": "Invalid or missing Video ID"}), 400
         
     ydl_opts = get_ydl_opts()
     
@@ -322,6 +401,39 @@ def api_info():
     except Exception as e:
         print(f"Info API error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# 8. Environment & Cookies Diagnostic Endpoint
+@app.route('/api/debug')
+def api_debug():
+    render_exists = os.path.exists(COOKIES_FILE_RENDER)
+    local_exists = os.path.exists(COOKIES_FILE_LOCAL)
+    
+    render_size = os.path.getsize(COOKIES_FILE_RENDER) if render_exists else 0
+    local_size = os.path.getsize(COOKIES_FILE_LOCAL) if local_exists else 0
+    
+    first_line = ""
+    active_path = COOKIES_FILE
+    if os.path.exists(active_path):
+        try:
+            with open(active_path, 'r') as f:
+                first_line = f.readline().strip()
+                if len(first_line) > 100:
+                    first_line = first_line[:50] + "... [TRUNCATED]"
+        except Exception as e:
+            first_line = f"Error reading: {e}"
+            
+    return jsonify({
+        "cookies_path_configured": COOKIES_FILE,
+        "cookies_file_exists": os.path.exists(COOKIES_FILE),
+        "render_secrets_exists": render_exists,
+        "render_secrets_size_bytes": render_size,
+        "local_root_exists": local_exists,
+        "local_root_size_bytes": local_size,
+        "file_preview_first_line": first_line,
+        "python_version": sys.version,
+        "yt_dlp_version": yt_dlp.version.__version__
+    })
 
 
 # --- BACKGROUND TASK RUNNER ---
@@ -462,10 +574,10 @@ def process_download_task(download_id, url, target_title, target_artist, target_
             with downloads_lock:
                 active_downloads[download_id]['logs'].append(f"[WARNING] Tag injection failed: {tag_err}")
 
-        # Rename file to cleaner format: Title - Artist.mp3 (replacing unsafe characters)
-        clean_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c in ' -_()']).strip()
-        clean_artist = "".join([c for c in artist if c.isalpha() or c.isdigit() or c in ' -_()']).strip()
-        clean_filename = f"{clean_title} - {clean_artist}.mp3"
+        # Rename file to cleaner format: Title - Artist.mp3 (replacing unsafe characters securely)
+        clean_title = sanitize_filename(title) or "Unknown Track"
+        clean_artist = sanitize_filename(artist) or "Unknown Artist"
+        clean_filename = sanitize_filename(f"{clean_title} - {clean_artist}.mp3")
         clean_filepath = os.path.join(DOWNLOADS_DIR, clean_filename)
         
         try:
@@ -490,6 +602,16 @@ def process_download_task(download_id, url, target_title, target_artist, target_
             
     except Exception as e:
         print(f"Download thread error: {e}")
+        # Clean up any leftover temporary files associated with this download_id to prevent leakages
+        try:
+            if os.path.exists(DOWNLOADS_DIR):
+                for file in os.listdir(DOWNLOADS_DIR):
+                    if file.startswith(download_id):
+                        os.remove(os.path.join(DOWNLOADS_DIR, file))
+                        print(f"Cleaned up failed task file: {file}")
+        except Exception as cleanup_err:
+            print(f"Error cleaning up failed task files: {cleanup_err}")
+            
         with downloads_lock:
             if download_id in active_downloads:
                 active_downloads[download_id].update({
