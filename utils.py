@@ -1,8 +1,10 @@
 import os
 import re
 import json
+import ssl
 import urllib.request
 import urllib.parse
+import urllib.error
 
 # Whitelist of allowed domains to prevent SSRF
 ALLOWED_DOMAINS = {
@@ -32,98 +34,59 @@ def sanitize_filename(name):
     sanitized = re.sub(r'\.+', '.', sanitized)
     return sanitized.strip()[:100]
 
+
 def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None):
+    """
+    Fallback downloader: tries multiple yt-dlp player clients that bypass
+    YouTube's bot detection on datacenter IPs without needing cookies or PO tokens.
+    All public Cobalt API instances now require JWT auth and are not viable.
+    """
+    import yt_dlp
+
     def log(msg):
         if log_callback:
             log_callback(msg)
         print(msg)
 
-    # Create unverified SSL context to bypass SSL validation errors on community-managed instances
-    import ssl
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
-    instances = [
-        "https://api-cobalt.eversiege.network/",
-        "https://api.cobalt.liubquanti.click/",
-        "https://cobalt.omega.wolfy.love/",
-        "https://melon.clxxped.lol/",
-        "https://nuko-c.meowing.de/",
-        "https://api.qwkuns.me/",
-        "https://grapefruit.clxxped.lol/",
-        "https://subito-c.meowing.de/",
-        "https://api.cobalt.tools/"
+    # These player clients are known to bypass bot detection on cloud IPs
+    # without requiring PO tokens or valid browser cookies
+    fallback_clients = [
+        ('tv_embedded', 'YouTube TV Embedded client'),
+        ('mweb', 'YouTube Mobile Web client'),
+        ('ios', 'YouTube iOS client'),
+        ('web_safari', 'YouTube Web Safari client'),
     ]
-    
-    try:
-        # Dynamically query working instances from the public cobalt tracker directory
-        req = urllib.request.Request(
-            "https://cobalt.directory/api/working?type=api",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        )
-        with urllib.request.urlopen(req, timeout=5, context=ctx) as res:
-            data = json.loads(res.read().decode('utf-8'))
-            if isinstance(data, dict) and 'data' in data:
-                yt_list = data['data'].get('youtube')
-                if isinstance(yt_list, list):
-                    for url_val in yt_list:
-                        if url_val not in instances:
-                            if not url_val.endswith('/'):
-                                url_val += '/'
-                            instances.insert(0, url_val)  # Prioritize dynamic working ones
-    except Exception as dir_err:
-        log(f"[WARNING] Could not fetch dynamic instances: {dir_err}")
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Origin": "https://cobalt.tools",
-        "Referer": "https://cobalt.tools/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    payload = {
-        "url": url,
-        "downloadMode": "audio",
-        "audioFormat": "mp3",
-        "isAudioOnly": True
-    }
-    
-    for instance in instances:
+
+    for client, label in fallback_clients:
         try:
-            log(f"> Attempting backup stream resolver via: {instance}")
-            req = urllib.request.Request(
-                instance, 
-                data=json.dumps(payload).encode('utf-8'),
-                headers=headers,
-                method='POST'
-            )
-            with urllib.request.urlopen(req, timeout=12, context=ctx) as res:
-                response_data = json.loads(res.read().decode('utf-8'))
-                stream_url = response_data.get('url')
-                if stream_url:
-                    log(f"> Backup resolved audio link successfully!")
-                    output_filename = f"{download_id}.mp3"
-                    output_path = os.path.join(downloads_dir, output_filename)
-                    
-                    stream_req = urllib.request.Request(stream_url, headers={"User-Agent": headers["User-Agent"]})
-                    with urllib.request.urlopen(stream_req, context=ctx) as stream_res:
-                        with open(output_path, 'wb') as out_f:
-                            while True:
-                                chunk = stream_res.read(1024 * 64)
-                                if not chunk:
-                                    break
-                                out_f.write(chunk)
+            log(f"> Backup engine: trying {label}...")
+            output_template = os.path.join(downloads_dir, f"{download_id}.%(ext)s")
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': output_template,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+                'nocheckcertificate': True,
+                'quiet': True,
+                'no_warnings': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': client
+                    }
+                }
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            # Check if output file was created
+            for file in os.listdir(downloads_dir):
+                if file.startswith(download_id) and file.endswith('.mp3'):
+                    log(f"> Backup engine succeeded with {label}!")
                     return True
-                else:
-                    log(f"[WARNING] Resolver {instance} responded: {response_data}")
-        except urllib.error.HTTPError as he:
-            try:
-                err_body = he.read().decode('utf-8', errors='ignore')
-                log(f"[WARNING] Resolver {instance} responded with HTTP {he.code}: {err_body}")
-            except Exception:
-                log(f"[WARNING] Resolver {instance} responded with HTTP {he.code}")
         except Exception as e:
-            log(f"[WARNING] Resolver {instance} encountered an error: {e}")
-            
+            log(f"[WARNING] Backup engine {label} failed: {e}")
+
     return False

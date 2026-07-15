@@ -92,9 +92,10 @@ def get_ydl_opts(custom_opts=None):
     opts = {
         'nocheckcertificate': True,
         'quiet': True,
+        # tv_embedded client bypasses bot detection on datacenter IPs without PO tokens
         'extractor_args': {
             'youtube': {
-                'player_client': 'ios,android'
+                'player_client': 'tv_embedded,ios'
             }
         }
     }
@@ -106,9 +107,12 @@ def get_ydl_opts(custom_opts=None):
             import shutil
             shutil.copy2(COOKIES_FILE, writeable_cookies_path)
             opts['cookiefile'] = writeable_cookies_path
+            print(f"[COOKIES] Loaded {os.path.getsize(writeable_cookies_path)} bytes from: {COOKIES_FILE}")
         except Exception as copy_err:
             print(f"Error copying cookies to writeable path: {copy_err}")
             opts['cookiefile'] = COOKIES_FILE
+    else:
+        print(f"[COOKIES] No cookies file found at: {COOKIES_FILE}")
     if custom_opts:
         for k, v in custom_opts.items():
             if k == 'extractor_args':
