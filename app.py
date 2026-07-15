@@ -540,56 +540,57 @@ def process_download_task(download_id, url, target_title, target_artist, target_
         }],
     })
     
-    # Initialize variables for fallback
-    title = target_title or "Unknown Track"
-    artist = target_artist or "Unknown Artist"
-    album = target_album or "Single Release"
-    thumbnail_url = None
-    final_filename = ""
-    
     try:
-        # Extract metadata info first
-        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            # Resolve tags if not custom provided
-            title = target_title or info.get('title', 'Unknown Track')
-            artist = target_artist or info.get('channel') or info.get('uploader') or 'Unknown Artist'
-            album = target_album or 'SonicFlow Audio Extractor'
-            thumbnail_url = info.get('thumbnail')
-            
-        with downloads_lock:
-            active_downloads[download_id]['logs'].append(f"> Target Title: {title}")
-            active_downloads[download_id]['logs'].append(f"> Target Artist: {artist}")
-            active_downloads[download_id]['logs'].append("> Initiating connection to stream client...")
-            
-        # Download and convert
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-            
-        # Locate the output file (we find the newly created MP3 starting with the download_id)
-        for file in os.listdir(DOWNLOADS_DIR):
-            if file.startswith(download_id) and file.endswith(".mp3"):
-                final_filename = file
-                break
+        # Initialize variables for fallback
+        title = target_title or "Unknown Track"
+        artist = target_artist or "Unknown Artist"
+        album = target_album or "Single Release"
+        thumbnail_url = None
+        final_filename = ""
+        
+        try:
+            # Extract metadata info first
+            with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+                info = ydl.extract_info(url, download=False)
                 
-        if not final_filename:
-            raise Exception("Could not find the extracted audio output file.")
-            
-    except Exception as yt_err:
-        print(f"Primary engine yt-dlp failed: {yt_err}. Attempting self-healing Cobalt API fallback...")
-        with downloads_lock:
-            active_downloads[download_id]['logs'].append(f"[WARNING] Primary download engine encountered a challenge: {yt_err}")
-            active_downloads[download_id]['logs'].append("> Activating backup extraction engine...")
-            
-        # Trigger the cobalt API self-healing fallback
-        success = fallback_cobalt_download(url, download_id)
-        if success:
-            final_filename = f"{download_id}.mp3"
-        else:
-            raise Exception(f"Extraction failed. Both primary engine and fallback engine returned errors. Primary error: {yt_err}")
-            
-    final_filepath = os.path.join(DOWNLOADS_DIR, final_filename)
+                # Resolve tags if not custom provided
+                title = target_title or info.get('title', 'Unknown Track')
+                artist = target_artist or info.get('channel') or info.get('uploader') or 'Unknown Artist'
+                album = target_album or 'SonicFlow Audio Extractor'
+                thumbnail_url = info.get('thumbnail')
+                
+            with downloads_lock:
+                active_downloads[download_id]['logs'].append(f"> Target Title: {title}")
+                active_downloads[download_id]['logs'].append(f"> Target Artist: {artist}")
+                active_downloads[download_id]['logs'].append("> Initiating connection to stream client...")
+                
+            # Download and convert
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+                
+            # Locate the output file (we find the newly created MP3 starting with the download_id)
+            for file in os.listdir(DOWNLOADS_DIR):
+                if file.startswith(download_id) and file.endswith(".mp3"):
+                    final_filename = file
+                    break
+                    
+            if not final_filename:
+                raise Exception("Could not find the extracted audio output file.")
+                
+        except Exception as yt_err:
+            print(f"Primary engine yt-dlp failed: {yt_err}. Attempting self-healing Cobalt API fallback...")
+            with downloads_lock:
+                active_downloads[download_id]['logs'].append(f"[WARNING] Primary download engine encountered a challenge: {yt_err}")
+                active_downloads[download_id]['logs'].append("> Activating backup extraction engine...")
+                
+            # Trigger the cobalt API self-healing fallback
+            success = fallback_cobalt_download(url, download_id)
+            if success:
+                final_filename = f"{download_id}.mp3"
+            else:
+                raise Exception(f"Extraction failed. Both primary engine and fallback engine returned errors. Primary error: {yt_err}")
+                
+        final_filepath = os.path.join(DOWNLOADS_DIR, final_filename)
         
         # Download thumbnail artwork
         art_data = None
