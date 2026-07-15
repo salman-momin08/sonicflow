@@ -29,7 +29,15 @@ DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "downloads")
 if not os.path.exists(DOWNLOADS_DIR):
     os.makedirs(DOWNLOADS_DIR)
 
-COOKIES_FILE = os.path.join(WORKSPACE_DIR, "cookies.txt")
+COOKIES_FILE_LOCAL = os.path.join(WORKSPACE_DIR, "cookies.txt")
+COOKIES_FILE_RENDER = "/etc/secrets/cookies.txt"
+
+# Select the active cookie file depending on environment
+if os.path.exists(COOKIES_FILE_RENDER):
+    COOKIES_FILE = COOKIES_FILE_RENDER
+    print("Render secret cookies.txt detected.")
+else:
+    COOKIES_FILE = COOKIES_FILE_LOCAL
 
 def get_ydl_opts(custom_opts=None):
     opts = {
