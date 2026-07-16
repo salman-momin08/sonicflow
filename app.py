@@ -16,7 +16,7 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB
 
 # Import security, file sanitization, and fallback downloader utilities
-from utils import is_safe_url, sanitize_filename, fallback_cobalt_download
+from utils import is_safe_url, sanitize_filename, fallback_cobalt_download, invidious_search, invidious_get_info, extract_youtube_id
 
 app = Flask(__name__)
 
@@ -177,45 +177,47 @@ def api_search():
     if not query:
         return jsonify({"results": []})
         
-    print(f"Searching YouTube for: {query}")
-    
-    # Search is lightweight and doesn't require cookies. Removing cookies prevents
-    # search failures if the cookies file contains any invalid or expired Google sessions.
-    ydl_opts = {
-        'nocheckcertificate': True,
-        'quiet': True,
-        'default_search': 'ytsearch',
-        'extract_flat': True,
-    }
-    
+    print(f"Searching for: {query}")
+
+    # Primary: use Invidious API — no YouTube IP required, works on any cloud server
     try:
+        results = invidious_search(query, limit=limit)
+        if results:
+            return jsonify({"results": results})
+        print("Invidious search returned no results, falling back to yt-dlp...")
+    except Exception as inv_err:
+        print(f"Invidious search error: {inv_err}")
+
+    # Fallback: yt-dlp search (works locally, may fail on cloud IPs)
+    try:
+        ydl_opts = {
+            'nocheckcertificate': True,
+            'quiet': True,
+            'default_search': 'ytsearch',
+            'extract_flat': True,
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Run search query
             search_results = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-            
             mapped_results = []
             if 'entries' in search_results:
                 for entry in search_results['entries']:
                     if not entry:
                         continue
-                    
                     mapped_results.append({
                         "id": entry.get('id'),
                         "name": entry.get('title'),
                         "artist": entry.get('channel') or entry.get('uploader') or "Unknown Artist",
                         "album": "YouTube Audio",
                         "duration": entry.get('duration') or 0,
-                        "audio": entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}",
+                        "audio": f"https://www.youtube.com/watch?v={entry.get('id')}",
                         "audiodownload": f"https://www.youtube.com/watch?v={entry.get('id')}",
                         "image": f"https://img.youtube.com/vi/{entry.get('id')}/hqdefault.jpg",
                         "genre": "Web Stream",
                         "isYoutube": True
                     })
-            
             return jsonify({"results": mapped_results})
-            
     except Exception as e:
-        print(f"Search API error: {e}")
+        print(f"Search fallback error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # 2. Trigger Track Download & Conversion (MP3 + ID3 Tags)
@@ -523,12 +525,12 @@ def process_download_task(download_id, url, target_title, target_artist, target_
                 raise Exception("Could not find the extracted audio output file.")
                 
         except Exception as yt_err:
-            print(f"Primary engine yt-dlp failed: {yt_err}. Attempting self-healing Cobalt API fallback...")
+            print(f"Primary engine yt-dlp failed: {yt_err}. Activating Invidious fallback...")
             with downloads_lock:
                 active_downloads[download_id]['logs'].append(f"[WARNING] Primary download engine encountered a challenge: {yt_err}")
-                active_downloads[download_id]['logs'].append("> Activating backup extraction engine...")
+                active_downloads[download_id]['logs'].append("> Activating backup extraction engine (Invidious network)...")
                 
-            # Trigger the cobalt API self-healing fallback with thread-safe log callbacks
+            # Invidious fallback — fetches direct CDN URLs, bypasses YouTube IP restrictions
             def append_log(msg):
                 with downloads_lock:
                     if download_id in active_downloads:
@@ -536,8 +538,19 @@ def process_download_task(download_id, url, target_title, target_artist, target_
             success = fallback_cobalt_download(url, download_id, DOWNLOADS_DIR, log_callback=append_log)
             if success:
                 final_filename = f"{download_id}.mp3"
+                # Try to get metadata if we didn't get it from primary engine
+                if not thumbnail_url:
+                    vid_id = extract_youtube_id(url)
+                    if vid_id:
+                        inv_info = invidious_get_info(vid_id)
+                        if inv_info:
+                            if not target_title:
+                                title = inv_info.get('title', title)
+                            if not target_artist:
+                                artist = inv_info.get('author', artist)
+                            thumbnail_url = inv_info.get('thumbnail_url')
             else:
-                raise Exception(f"Extraction failed. Both primary engine and fallback engine returned errors. Primary error: {yt_err}")
+                raise Exception(f"Extraction failed. Both primary engine and Invidious fallback returned errors. Primary error: {yt_err}")
                 
         final_filepath = os.path.join(DOWNLOADS_DIR, final_filename)
         
