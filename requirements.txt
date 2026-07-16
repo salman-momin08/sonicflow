@@ -1,4 +1,5 @@
-Flask
-yt-dlp
-mutagen
-static-ffmpeg
+Flask>=3.0.0
+yt-dlp>=2024.11.18
+mutagen>=1.47.0
+static-ffmpeg>=2.5
+python>=3.11.9
