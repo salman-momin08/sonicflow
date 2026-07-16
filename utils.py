@@ -2,14 +2,19 @@
 utils.py  –  SonicFlow helper utilities
 
 Fallback download strategy for cloud servers (Render, Railway, etc.)
-where direct YouTube requests are blocked at the IP level:
+where direct YouTube requests are blocked at the IP level.
 
-  yt-dlp + Invidious URL  →  Invidious API fetches stream info on our behalf
-                           →  Returns direct googlevideo.com CDN URL
-                           →  yt-dlp downloads from CDN (no IP restriction)
+Strategy:
+  1. Call the Invidious REST API directly  (/api/v1/videos/{id})
+     → This is a plain HTTP request to an Invidious server.
+     → Invidious fetches the YouTube stream info on our behalf.
+     → Returns JSON with direct audio stream URLs (googlevideo.com CDN).
+  2. Download the raw audio stream directly from the CDN URL.
+     → googlevideo.com CDN does NOT check the requesting server's IP.
+  3. Convert to MP3 with ffmpeg.
 
-yt-dlp has a built-in InvidiousIE extractor, so we just swap the URL
-domain from youtube.com → invidious-instance.com and let yt-dlp do the rest.
+yt-dlp is NOT used in the fallback — it always routes back to YouTube's
+blocked API regardless of what URL you pass to it.
 """
 
 import os
@@ -19,6 +24,13 @@ import ssl
 import time
 import urllib.request
 import urllib.parse
+
+# ---------------------------------------------------------------------------
+# SSL context that skips certificate verification (for Invidious instances)
+# ---------------------------------------------------------------------------
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
 
 # ---------------------------------------------------------------------------
 # Security helpers
@@ -60,52 +72,51 @@ def extract_youtube_id(url):
         m = re.search(pattern, url)
         if m:
             return m.group(1)
-    # Bare video ID
     if re.match(r'^[a-zA-Z0-9_-]{11}$', url.strip()):
         return url.strip()
     return None
 
 # ---------------------------------------------------------------------------
-# Invidious instance list  (sorted: healthiest first based on api.invidious.io)
+# Invidious instance list  (API-enabled, sorted by uptime from api.invidious.io)
 # ---------------------------------------------------------------------------
-# These are public API-enabled instances.  yt-dlp's built-in InvidiousIE
-# extractor understands /watch?v= URLs on these domains and fetches stream
-# info via their API, returning direct googlevideo.com CDN URLs that work
-# from any IP address.
 INVIDIOUS_INSTANCES = [
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
     "https://inv.bp.projectsegfau.lt",
     "https://invidious.privacydev.net",
-    "https://yt.cdaut.de",
     "https://invidious.io.lol",
     "https://invidious.tiekoetter.com",
     "https://y.com.sb",
     "https://vid.puffyan.us",
+    "https://yt.cdaut.de",
 ]
 
 # ---------------------------------------------------------------------------
-# Invidious REST helper
+# Invidious REST helper  (direct HTTP, no yt-dlp involved)
 # ---------------------------------------------------------------------------
 
-def _invidious_api(path, timeout=8):
-    """Try each Invidious instance for a given API path. Returns (instance, data)."""
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
+def _invidious_api(path, timeout=10):
+    """
+    Try each Invidious instance for a given API path.
+    Returns (instance_url, json_data) or (None, None).
+    """
     for instance in INVIDIOUS_INSTANCES:
         url = f"{instance}{path}"
         try:
             req = urllib.request.Request(
                 url,
-                headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; SonicFlow/1.0)',
+                    'Accept': 'application/json',
+                }
             )
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx) as resp:
+                if resp.status != 200:
+                    continue
                 data = json.loads(resp.read().decode('utf-8'))
                 return instance, data
         except Exception as e:
-            print(f"[Invidious] {instance} failed: {e}")
+            print(f"[Invidious] {instance} API error: {e}")
             continue
     return None, None
 
@@ -118,7 +129,7 @@ def invidious_search(query, limit=12):
     encoded = urllib.parse.quote(query)
     _, data = _invidious_api(
         f"/api/v1/search?q={encoded}&type=video"
-        f"&fields=videoId,title,author,lengthSeconds,videoThumbnails&page=1"
+        f"&fields=videoId,title,author,lengthSeconds,videoThumbnails"
     )
     if not data:
         return []
@@ -127,10 +138,12 @@ def invidious_search(query, limit=12):
     for item in (data or [])[:limit]:
         vid_id = item.get('videoId', '')
         thumbs = item.get('videoThumbnails', [])
-        thumb = next((t['url'] for t in thumbs if t.get('quality') == 'high'), '')
-        # Some instances return relative thumbnail URLs – fall back to YouTube
-        if not thumb or thumb.startswith('/'):
-            thumb = f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
+        # Prefer 'high' quality thumbnail; skip relative URLs
+        thumb = next(
+            (t['url'] for t in thumbs
+             if t.get('quality') == 'high' and t.get('url', '').startswith('http')),
+            f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
+        )
         results.append({
             "id": vid_id,
             "name": item.get('title', 'Unknown'),
@@ -159,12 +172,14 @@ def invidious_get_info(video_id):
         return None
     thumbs = data.get('videoThumbnails', [])
     thumb = (
-        next((t['url'] for t in thumbs if t.get('quality') == 'maxresdefault'), None)
-        or next((t['url'] for t in thumbs if t.get('quality') == 'high'), None)
+        next((t['url'] for t in thumbs
+              if t.get('quality') == 'maxresdefault'
+              and t.get('url', '').startswith('http')), None)
+        or next((t['url'] for t in thumbs
+                 if t.get('quality') == 'high'
+                 and t.get('url', '').startswith('http')), None)
         or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
     )
-    if thumb.startswith('/'):
-        thumb = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
     return {
         'title': data.get('title', 'Unknown Track'),
         'author': data.get('author', 'Unknown Artist'),
@@ -172,21 +187,50 @@ def invidious_get_info(video_id):
     }
 
 # ---------------------------------------------------------------------------
-# Fallback downloader  (called when yt-dlp + YouTube URL fails)
+# Core fallback: Invidious API → direct CDN download → ffmpeg
 # ---------------------------------------------------------------------------
+
+def _pick_best_audio(adaptive_formats, instance):
+    """
+    Pick the best audio-only stream from Invidious adaptiveFormats.
+    Returns the URL string or None.
+    """
+    audio = [
+        f for f in adaptive_formats
+        if f.get('type', '').startswith('audio/')
+        and f.get('url')
+    ]
+    if not audio:
+        return None
+
+    # Sort by bitrate descending
+    audio.sort(key=lambda x: int(x.get('bitrate', 0)), reverse=True)
+    url = audio[0]['url']
+
+    # If the instance returns a relative/proxied URL, prefix with instance domain
+    if url.startswith('/'):
+        url = instance + url
+
+    return url
+
 
 def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None):
     """
-    Fallback downloader for cloud servers where YouTube IPs are blocked.
+    Fallback downloader for cloud servers where YouTube is IP-blocked.
 
-    Strategy: re-use yt-dlp but swap the URL from youtube.com to an
-    Invidious instance.  yt-dlp's built-in InvidiousIE extractor calls
-    the Invidious API, which returns direct googlevideo.com CDN audio URLs
-    that are NOT restricted by server IP.
+    Steps:
+      1. Extract the YouTube video ID.
+      2. Query each Invidious instance's REST API for audio stream URLs.
+         (This is a plain HTTP call — Invidious fetches from YouTube on its own server.)
+      3. Download the raw audio directly from the returned URL.
+         (googlevideo.com CDN has no IP restriction once you have the signed URL.)
+      4. Convert to MP3 using ffmpeg.
 
-    This is the simplest possible approach and requires zero extra libraries.
+    NOTE: yt-dlp is deliberately NOT used here — when passed an Invidious
+    URL, yt-dlp still internally routes to YouTube's API using Render's
+    blocked IP, which causes the same bot-check error.
     """
-    import yt_dlp
+    import subprocess
 
     def log(msg):
         if log_callback:
@@ -195,47 +239,108 @@ def fallback_cobalt_download(url, download_id, downloads_dir, log_callback=None)
 
     video_id = extract_youtube_id(url)
     if not video_id:
-        log(f"[WARNING] Cannot extract video ID from: {url}")
+        log(f"[WARNING] Cannot extract YouTube video ID from: {url}")
         return False
 
-    output_template = os.path.join(downloads_dir, f"{download_id}.%(ext)s")
-
-    base_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': output_template,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'nocheckcertificate': True,
-        'quiet': True,
-        'no_warnings': True,
-    }
+    raw_path  = os.path.join(downloads_dir, f"{download_id}_raw")
+    mp3_path  = os.path.join(downloads_dir, f"{download_id}.mp3")
 
     for instance in INVIDIOUS_INSTANCES:
-        # Construct an Invidious watch URL — yt-dlp InvidiousIE handles these natively
-        invidious_url = f"{instance}/watch?v={video_id}"
         try:
-            log(f"> Backup engine: trying via {instance.replace('https://', '')}...")
-            with yt_dlp.YoutubeDL(base_opts) as ydl:
-                ydl.download([invidious_url])
+            log(f"> Backup engine: querying {instance.replace('https://', '')} API...")
 
-            # Check the MP3 was created
-            mp3_path = os.path.join(downloads_dir, f"{download_id}.mp3")
+            # ── Step 1: Get video metadata + stream URLs from Invidious API ──
+            api_url = f"{instance}/api/v1/videos/{video_id}"
+            req = urllib.request.Request(
+                api_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; SonicFlow/1.0)',
+                    'Accept': 'application/json',
+                }
+            )
+            with urllib.request.urlopen(req, timeout=12, context=_ssl_ctx) as resp:
+                if resp.status != 200:
+                    log(f"[WARNING] {instance.replace('https://','')} returned HTTP {resp.status}")
+                    continue
+                data = json.loads(resp.read().decode('utf-8'))
+
+            adaptive_formats = data.get('adaptiveFormats', [])
+            if not adaptive_formats:
+                log(f"[WARNING] {instance.replace('https://','')} returned no adaptive formats")
+                continue
+
+            audio_url = _pick_best_audio(adaptive_formats, instance)
+            if not audio_url:
+                log(f"[WARNING] {instance.replace('https://','')} has no audio-only streams")
+                continue
+
+            log(f"> Got audio stream. Downloading from CDN...")
+
+            # ── Step 2: Download raw audio stream ──
+            dl_req = urllib.request.Request(
+                audio_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                    'Referer':    f'https://www.youtube.com/watch?v={video_id}',
+                    'Origin':     'https://www.youtube.com',
+                }
+            )
+            downloaded_bytes = 0
+            with urllib.request.urlopen(dl_req, timeout=180, context=_ssl_ctx) as resp:
+                with open(raw_path, 'wb') as f:
+                    while True:
+                        chunk = resp.read(65536)  # 64 KB chunks
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded_bytes += len(chunk)
+
+            size_mb = round(downloaded_bytes / 1024 / 1024, 1)
+            log(f"> Downloaded {size_mb} MB. Converting to MP3...")
+
+            # ── Step 3: Convert to MP3 with ffmpeg ──
+            result = subprocess.run(
+                ['ffmpeg', '-y', '-i', raw_path,
+                 '-vn', '-acodec', 'libmp3lame', '-q:a', '2',
+                 mp3_path],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+
+            # Clean up raw file regardless of result
+            try:
+                os.remove(raw_path)
+            except Exception:
+                pass
+
+            if result.returncode != 0:
+                log(f"[WARNING] ffmpeg failed: {result.stderr[-200:]}")
+                continue
+
             if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 10_000:
-                log(f"> Backup engine: success via {instance.replace('https://', '')}!")
+                log(f"> Backup engine: conversion complete via {instance.replace('https://', '')}!")
                 return True
+            else:
+                log(f"[WARNING] MP3 output missing or too small — skipping")
+                continue
 
+        except urllib.error.HTTPError as he:
+            log(f"[WARNING] {instance.replace('https://','')} HTTP {he.code}: {he.reason}")
+        except urllib.error.URLError as ue:
+            log(f"[WARNING] {instance.replace('https://','')} connection error: {ue.reason}")
+        except subprocess.TimeoutExpired:
+            log(f"[WARNING] ffmpeg timed out for {instance.replace('https://', '')}")
         except Exception as e:
-            log(f"[WARNING] {instance.replace('https://', '')} failed: {str(e)[:120]}")
-            # Clean up any partial files before trying next instance
-            for f in os.listdir(downloads_dir):
-                if f.startswith(download_id) and not f.endswith('.mp3'):
-                    try:
-                        os.remove(os.path.join(downloads_dir, f))
-                    except Exception:
-                        pass
+            log(f"[WARNING] {instance.replace('https://','')} unexpected error: {e}")
 
-    log("[ERROR] All Invidious instances failed.")
+        # Clean up any partial files before next instance
+        for leftover in [raw_path, mp3_path]:
+            try:
+                if os.path.exists(leftover):
+                    os.remove(leftover)
+            except Exception:
+                pass
+
+    log("[ERROR] All Invidious instances exhausted — no audio stream could be retrieved.")
     return False
